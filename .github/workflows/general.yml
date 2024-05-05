@@ -111,12 +111,12 @@ jobs:
               POSTGRES_DB: postgres
             ports:
               - 5432:5432
-        container:
-            image: xd009642/tarpaulin
-            options: --security-opt seccomp=unconfined
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+
+            - name: Install the Rust toolchain with clippya
+              uses: dtolnay/rust-toolchain@stable
 
             - name: Rust cache action
               uses: Swatinem/rust-cache@v2
@@ -138,4 +138,4 @@ jobs:
 
             - name: Generate code coverage
               run: |
-                cargo tarpaulin --verbose --workspace
+                cargo install cargo-tarpaulin && cargo tarpaulin --verbose --workspace
