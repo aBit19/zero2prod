@@ -72,6 +72,7 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+
             - name: Install the Rust toolchain with clippya
               uses: dtolnay/rust-toolchain@stable
               with:
@@ -101,12 +102,40 @@ jobs:
     coverage:
         name: Code coverage
         runs-on: ubuntu-latest
+        services:
+          postgres:
+            image: postgres:14
+            env:
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: password
+              POSTGRES_DB: postgres
+            ports:
+              - 5432:5432
         container:
             image: xd009642/tarpaulin
             options: --security-opt seccomp=unconfined
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+
+            - name: Rust cache action
+              uses: Swatinem/rust-cache@v2
+              with: 
+                key: sqlx-${{ env.SQLX_VERSION}}
+
+            - name: Install SQLx CLI
+              run: cargo install sqlx-cli 
+                --version=${{ env.SQLX_VERSION }}
+                --no-default-features 
+                --features ${{ env.SQLX_FEATURES }}
+                --locked
+
+            - name: Install psql
+              run: sudo apt-get update && sudo apt-get install postgresql-client -y
+            
+            - name: Run migrations
+              run: SKIP_DOCKER=true ./scripts/init_db.sh
+
             - name: Generate code coverage
               run: |
                 cargo tarpaulin --verbose --workspace
