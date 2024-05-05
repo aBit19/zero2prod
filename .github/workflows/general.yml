@@ -3,15 +3,48 @@ run-name: ${{github.actor}} on ${{github.event_name}}
 
 on: [push, pull_request]
 
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_VERSION: 0.7.1
+  SQLX_FEATURES: "rustls,postgres"
+
 jobs:
     test:
         name: Test
         runs-on: ubuntu-latest
+        services:
+          postgres:
+            image: postgres:14
+            env:
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: password
+              POSTGRES_DB: postgres
+            ports:
+              - 5432:5432
         steps:
-            - uses: actions/checkout@v4
-            - uses: dtolnay/rust-toolchain@stable
-            - run: cargo install cargo-cache
-            - uses: Swatinem/rust-cache@v2
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Install the Rust toolchain 
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Rust cache action
+              uses: Swatinem/rust-cache@v2
+              with: 
+                key: sqlx-${{ env.SQLX_VERSION}}
+            - name: Install SQLx CLI
+              run: cargo install sqlx-cli 
+                --version=${{ env.SQLX_VERSION }}
+                --no-default-features 
+                --features ${{ env.SQLX_FEATURES }}
+                --locked
+            
+            - name: Install psql
+              run: sudo apt-get update && sudo apt-get install postgresql-client -y
+            
+            - name: Run migrations
+              run: SKIP_DOCKER=true ./scripts/init_db.sh
+
             - name: Run tests 
               run: cargo test
     fmt:
@@ -27,13 +60,44 @@ jobs:
     clippy:
         name: Clippy Lint
         runs-on: ubuntu-latest
+        services:
+          postgres:
+            image: postgres:14
+            env:
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: password
+              POSTGRES_DB: postgres
+            ports:
+              - 5432:5432
         steps:
-            - uses: actions/checkout@v4
-            - uses: dtolnay/rust-toolchain@stable
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Install the Rust toolchain with clippya
+              uses: dtolnay/rust-toolchain@stable
               with:
                 components: clippy
+
+            - name: Rust cache action
+              uses: Swatinem/rust-cache@v2
+              with: 
+                key: sqlx-${{ env.SQLX_VERSION}}
+
+            - name: Install SQLx CLI
+              run: cargo install sqlx-cli 
+                --version=${{ env.SQLX_VERSION }}
+                --no-default-features 
+                --features ${{ env.SQLX_FEATURES }}
+                --locked
+            
+            - name: Install psql
+              run: sudo apt-get update && sudo apt-get install postgresql-client -y
+            
+            - name: Run migrations
+              run: SKIP_DOCKER=true ./scripts/init_db.sh
+
             - name: Run clippy
               run: cargo clippy -- -D warnings
+
     coverage:
         name: Code coverage
         runs-on: ubuntu-latest
