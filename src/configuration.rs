@@ -2,7 +2,13 @@ use secrecy::{ExposeSecret, Secret};
 #[derive(serde::Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
-    pub application_port: u16,
+    pub application: ApplicationSettings,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ApplicationSettings {
+    pub port: u16,
+    pub host: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -37,11 +43,46 @@ impl DatabaseSettings {
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
+    let configuration_dir = std::env::current_dir()
+        .expect("Failed to determine the current directory.")
+        .join("configuration");
+
+    let env_config: Environment = std::env::var("APP_ENVIRONMENT")
+        .unwrap_or_else(|_| "dev".into())
+        .try_into()
+        .expect("Failed to parse APP_ENVIRONMENT");
+
     let settings = config::Config::builder()
-        .add_source(config::File::new(
-            "configuration.yaml",
-            config::FileFormat::Yaml,
+        .add_source(config::File::from(configuration_dir.join("base.yaml")))
+        .add_source(config::File::from(
+            configuration_dir.join(env_config.as_str()),
         ))
         .build()?;
     settings.try_deserialize::<Settings>()
+}
+
+enum Environment {
+    Dev,
+    Production,
+}
+
+impl Environment {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Environment::Dev => "dev",
+            Environment::Production => "production",
+        }
+    }
+}
+
+impl TryFrom<String> for Environment {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "dev" => Ok(Environment::Dev),
+            "production" => Ok(Environment::Production),
+            _ => Err(format!("{} is not a valid environment", value)),
+        }
+    }
 }
