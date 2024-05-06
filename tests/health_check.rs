@@ -1,6 +1,16 @@
+use once_cell::sync::Lazy;
+use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
-use zero2prod::configuration::DatabaseSettings;
+use zero2prod::{configuration::DatabaseSettings, telemetry};
+
+static TRACING: Lazy<()> = Lazy::new(|| {
+    if std::env::var("TEST_LOG").is_ok() {
+        telemetry::init("test", "debug", std::io::stdout);
+    } else {
+        telemetry::init("test", "debug", std::io::sink);
+    };
+});
 
 #[tokio::test]
 async fn health_check_works() {
@@ -89,7 +99,10 @@ async fn spawn_app() -> TestApp {
 
     let database_settings: DatabaseSettings = setup_database().await;
 
-    let connection_string = database_settings.connection_string();
+    let connection_string = database_settings
+        .connection_string()
+        .expose_secret()
+        .to_string();
     let pool = PgPool::connect(&connection_string)
         .await
         .expect("Failed to connect to Postgres.");
@@ -102,15 +115,22 @@ async fn spawn_app() -> TestApp {
 }
 
 async fn setup_database() -> DatabaseSettings {
+    Lazy::force(&TRACING);
+
     let database_settings = zero2prod::configuration::get_configuration()
         .expect("Failed to read configuration.")
         .database;
 
     let database_name = uuid::Uuid::new_v4().to_string();
 
-    let mut connection = PgConnection::connect(&database_settings.connection_string_without_db())
-        .await
-        .expect("Unable connect to Postgres.");
+    let mut connection = PgConnection::connect(
+        &database_settings
+            .connection_string_without_db()
+            .expose_secret()
+            .to_string(),
+    )
+    .await
+    .expect("Unable connect to Postgres.");
 
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, database_name).as_str())
@@ -122,9 +142,14 @@ async fn setup_database() -> DatabaseSettings {
         ..database_settings
     };
 
-    let mut connection = PgConnection::connect(&database_settings.connection_string())
-        .await
-        .expect("Unable connect to Postgres.");
+    let mut connection = PgConnection::connect(
+        &database_settings
+            .connection_string()
+            .expose_secret()
+            .to_string(),
+    )
+    .await
+    .expect("Unable connect to Postgres.");
 
     sqlx::migrate!("./migrations")
         .run(&mut connection)
