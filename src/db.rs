@@ -1,4 +1,4 @@
-use sqlx::{Database, PgConnection, PgPool, Pool, Connection};
+use sqlx::{Connection, Database, PgConnection, PgPool, Pool};
 
 pub async fn get_pool(connection_string: &str) -> Pool<impl Database> {
     PgPool::connect(connection_string)
