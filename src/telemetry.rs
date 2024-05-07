@@ -11,16 +11,12 @@ where
     init_subscriber(subscriber);
 }
 
-pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
+fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
     set_global_default(subscriber).expect("Failed to set subscriber.");
     LogTracer::init().expect("Failed to set logger.");
 }
 
-pub fn get_subscriber<Sink>(
-    name: &str,
-    env_filter: &str,
-    sink: Sink,
-) -> impl Subscriber + Send + Sync
+fn get_subscriber<Sink>(name: &str, env_filter: &str, sink: Sink) -> impl Subscriber + Send + Sync
 where
     Sink: for<'a> MakeWriter<'a> + Send + Sync + 'static,
 {

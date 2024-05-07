@@ -1,12 +1,50 @@
 use secrecy::{ExposeSecret, Secret};
-use sqlx::{Connection, Database, PgConnection, PgPool, Pool};
+use sqlx::{
+    postgres::{PgConnectOptions, PgSslMode},
+    Connection, Database, PgConnection, PgPool, Pool,
+};
 
-pub async fn get_pool(connection_string: &Secret<String>) -> Pool<impl Database> {
-    PgPool::connect_lazy(connection_string.expose_secret()).expect("Unable to connect to Postgres.")
+pub async fn get_pool(database_settings: &DatabaseSettings) -> Pool<impl Database> {
+    PgPool::connect_lazy_with(database_settings.into())
 }
 
-pub async fn get_connection(connection_string: &Secret<String>) -> impl Connection {
-    PgConnection::connect(connection_string.expose_secret())
+pub async fn get_pg_pool(database_settings: &DatabaseSettings) -> PgPool {
+    PgPool::connect_lazy_with(database_settings.into())
+}
+
+pub async fn get_connection(database_settings: &DatabaseSettings) -> impl Connection {
+    PgConnection::connect_with(&database_settings.into())
         .await
         .expect("Unable to connect to Postgres.")
+}
+
+pub async fn get_pg_connection(database_settings: &DatabaseSettings) -> PgConnection {
+    PgConnection::connect_with(&database_settings.into())
+        .await
+        .expect("Unable to connect to Postgres.")
+}
+
+pub struct DatabaseSettings {
+    pub username: String,
+    pub password: Secret<String>,
+    pub host: String,
+    pub port: u16,
+    pub database_name: String,
+    pub require_ssl: bool,
+}
+
+impl From<&DatabaseSettings> for PgConnectOptions {
+    fn from(value: &DatabaseSettings) -> Self {
+        PgConnectOptions::new()
+            .host(&value.host)
+            .username(&value.username)
+            .password(value.password.expose_secret())
+            .port(value.port)
+            .database(&value.database_name)
+            .ssl_mode(if value.require_ssl {
+                PgSslMode::Require
+            } else {
+                PgSslMode::Prefer
+            })
+    }
 }
