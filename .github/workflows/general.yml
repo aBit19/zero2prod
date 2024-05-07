@@ -46,7 +46,7 @@ jobs:
               run: SKIP_DOCKER=true ./scripts/init_db.sh
 
             - name: Check sqlx-data.json is up to date
-              run: sqlx prepare --check --workspace
+              run: cargo sqlx prepare --check --workspace
 
             - name: Run tests 
               run: cargo test
