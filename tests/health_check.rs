@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use sqlx::{Executor, PgPool};
 use std::net::TcpListener;
-use zero2prod::{db, ioc, telemetry};
+use zero2prod::{db, telemetry};
 
 static TRACING: Lazy<()> = Lazy::new(|| {
     if std::env::var("TEST_LOG").is_ok() {
@@ -114,7 +114,7 @@ async fn setup_database() -> db::DatabaseSettings {
 
     let database_name = uuid::Uuid::new_v4().to_string();
 
-    let database_settings = ioc::get_db_settings(database_settings);
+    let database_settings: db::DatabaseSettings = database_settings.into();
     let mut connection = db::get_pg_connection(&database_settings).await;
 
     connection
