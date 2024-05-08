@@ -1,5 +1,15 @@
-use crate::{configuration, db};
+use crate::{configuration, db, domain::SubscriberEmail, email_client::EmailClient};
 use sqlx::{Connection, Database, Pool};
+
+pub fn get_email_client() -> EmailClient {
+    let config = configuration::get_configuration();
+    EmailClient::new(
+        config.email_client.base_url,
+        SubscriberEmail::parse(config.email_client.sender_email).expect("Valid email for sender"),
+        config.email_client.authorization_token,
+        std::time::Duration::from_millis(config.email_client.timeout_millis),
+    )
+}
 
 pub async fn get_pool() -> Pool<impl Database> {
     let config = configuration::get_configuration();

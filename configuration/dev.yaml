@@ -2,3 +2,8 @@ application:
   host: "127.0.0.1"
 database:
   require_ssl: false
+email_client:
+  sender_email: "test@test.gr"
+  base_url: "https//localhost:8080"
+  authorization_token: "test"
+  timeout_millis: 10000

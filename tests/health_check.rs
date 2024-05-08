@@ -1,7 +1,10 @@
 use once_cell::sync::Lazy;
 use sqlx::{Executor, PgPool};
 use std::net::TcpListener;
-use zero2prod::{db, telemetry};
+use zero2prod::{
+    configuration::DatabaseSettings, db, domain::SubscriberEmail, email_client::EmailClient,
+    telemetry,
+};
 
 static TRACING: Lazy<()> = Lazy::new(|| {
     if std::env::var("TEST_LOG").is_ok() {
@@ -99,21 +102,28 @@ async fn spawn_app() -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     let port = listener.local_addr().unwrap().port();
 
-    let database_settings = setup_database().await;
+    let configuration = zero2prod::configuration::get_configuration();
+    let database_settings = setup_database(configuration.database).await;
 
     let pool = db::get_pg_pool(&database_settings).await;
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url,
+        SubscriberEmail::parse(configuration.email_client.sender_email)
+            .expect("Valid email for sender"),
+        configuration.email_client.authorization_token,
+        std::time::Duration::from_millis(configuration.email_client.timeout_millis),
+    );
 
-    let server = zero2prod::startup::run(listener, pool.clone()).expect("Failed to start server");
+    let server = zero2prod::startup::run(listener, pool.clone(), email_client)
+        .expect("Failed to start server");
     let _ = tokio::spawn(server);
     let address = format!("http://127.0.0.1:{}", port);
 
     TestApp { address, pool }
 }
 
-async fn setup_database() -> db::DatabaseSettings {
+async fn setup_database(database_settings: DatabaseSettings) -> db::DatabaseSettings {
     Lazy::force(&TRACING);
-
-    let database_settings = zero2prod::configuration::get_configuration().database;
 
     let database_name = uuid::Uuid::new_v4().to_string();
 
