@@ -7,9 +7,8 @@ use crate::{
 use sqlx::{Connection, Database, PgConnection, PgPool, Pool};
 
 pub fn get_email_client(email_client: &EmailClientSettings) -> EmailClient {
-    let config = configuration::get_configuration();
     EmailClient::new(
-        config.email_client.base_url,
+        email_client.base_url.clone(),
         SubscriberEmail::parse(email_client.sender_email.clone()).expect("Valid email for sender"),
         email_client.authorization_token.clone(),
         std::time::Duration::from_millis(email_client.timeout_millis),

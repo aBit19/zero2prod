@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use reqwest::Response;
 use sqlx::{Executor, PgPool};
+use wiremock::MockServer;
 use zero2prod::{configuration::Settings, factory, startup::NewsletterApp, telemetry};
 
 pub static TRACING: Lazy<()> = Lazy::new(|| {
@@ -26,15 +27,18 @@ pub fn client() -> reqwest::Client {
 pub struct TestApp {
     pub address: String,
     pub pool: PgPool,
+    pub email_server: MockServer,
 }
 
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
 
-    // Ensure that we get a new database every time we run the tests to ensure isolation
+    let email_server = MockServer::start().await;
+
     let configuration = {
         let mut config = zero2prod::configuration::get_configuration();
         config.application.port = 0;
+        config.email_client.base_url = email_server.uri();
         config
     };
 
@@ -55,6 +59,7 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         address: format!("http://{}:{}", "127.0.0.1", port),
         pool: pg_pool,
+        email_server,
     }
 }
 
