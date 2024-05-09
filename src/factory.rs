@@ -1,42 +1,47 @@
-use crate::{configuration, db, domain::SubscriberEmail, email_client::EmailClient};
-use sqlx::{Connection, Database, Pool};
+use crate::{
+    configuration::{self, EmailClientSettings},
+    db,
+    domain::SubscriberEmail,
+    email_client::EmailClient,
+};
+use sqlx::{Connection, Database, PgConnection, PgPool, Pool};
 
-pub fn get_email_client() -> EmailClient {
+pub fn get_email_client(email_client: &EmailClientSettings) -> EmailClient {
     let config = configuration::get_configuration();
     EmailClient::new(
         config.email_client.base_url,
-        SubscriberEmail::parse(config.email_client.sender_email).expect("Valid email for sender"),
-        config.email_client.authorization_token,
-        std::time::Duration::from_millis(config.email_client.timeout_millis),
+        SubscriberEmail::parse(email_client.sender_email.clone()).expect("Valid email for sender"),
+        email_client.authorization_token.clone(),
+        std::time::Duration::from_millis(email_client.timeout_millis),
     )
 }
 
 pub async fn get_pool() -> Pool<impl Database> {
     let config = configuration::get_configuration();
-    get_pool_with(config.database).await
+    get_pool_with(&config.database).await
 }
 
 pub async fn get_connection() -> impl Connection {
     let config = configuration::get_configuration();
-    get_connection_with(config.database).await
+    get_connection_with(&config.database).await
 }
 
-pub async fn get_connection_with(config: configuration::DatabaseSettings) -> impl Connection {
+pub async fn get_connection_with(config: &configuration::DatabaseSettings) -> PgConnection {
     db::get_connection(&config.into()).await
 }
 
-pub async fn get_pool_with(config: configuration::DatabaseSettings) -> Pool<impl Database> {
+pub async fn get_pool_with(config: &configuration::DatabaseSettings) -> PgPool {
     db::get_pool(&config.into()).await
 }
 
-impl From<configuration::DatabaseSettings> for db::DatabaseSettings {
-    fn from(config: configuration::DatabaseSettings) -> Self {
+impl From<&configuration::DatabaseSettings> for db::DatabaseSettings {
+    fn from(config: &configuration::DatabaseSettings) -> Self {
         db::DatabaseSettings {
-            username: config.username,
-            password: config.password,
-            host: config.host,
+            username: config.username.clone(),
+            password: config.password.clone(),
+            host: config.host.clone(),
             port: config.port,
-            database_name: config.database_name,
+            database_name: config.database_name.clone(),
             require_ssl: config.require_ssl,
         }
     }

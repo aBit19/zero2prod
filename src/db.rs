@@ -1,10 +1,10 @@
 use secrecy::{ExposeSecret, Secret};
 use sqlx::{
     postgres::{PgConnectOptions, PgSslMode},
-    Connection, Database, PgConnection, PgPool, Pool,
+    Connection, PgConnection, PgPool,
 };
 
-pub async fn get_pool(database_settings: &DatabaseSettings) -> Pool<impl Database> {
+pub async fn get_pool(database_settings: &DatabaseSettings) -> PgPool {
     PgPool::connect_lazy_with(database_settings.into())
 }
 
@@ -12,7 +12,7 @@ pub async fn get_pg_pool(database_settings: &DatabaseSettings) -> PgPool {
     PgPool::connect_lazy_with(database_settings.into())
 }
 
-pub async fn get_connection(database_settings: &DatabaseSettings) -> impl Connection {
+pub async fn get_connection(database_settings: &DatabaseSettings) -> PgConnection {
     PgConnection::connect_with(&database_settings.into())
         .await
         .expect("Unable to connect to Postgres.")

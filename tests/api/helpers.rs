@@ -1,13 +1,9 @@
-use std::net::TcpListener;
-
 use once_cell::sync::Lazy;
+use reqwest::Response;
 use sqlx::{Executor, PgPool};
-use zero2prod::{
-    configuration::DatabaseSettings, db, domain::SubscriberEmail, email_client::EmailClient,
-    telemetry,
-};
+use zero2prod::{configuration::Settings, factory, startup::NewsletterApp, telemetry};
 
-static TRACING: Lazy<()> = Lazy::new(|| {
+pub static TRACING: Lazy<()> = Lazy::new(|| {
     if std::env::var("TEST_LOG").is_ok() {
         telemetry::init("test", "debug", std::io::stdout);
     } else {
@@ -33,53 +29,77 @@ pub struct TestApp {
 }
 
 pub async fn spawn_app() -> TestApp {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
-    let port = listener.local_addr().unwrap().port();
-
-    let configuration = zero2prod::configuration::get_configuration();
-    let database_settings = setup_database(configuration.database).await;
-
-    let pool = db::get_pg_pool(&database_settings).await;
-    let email_client = EmailClient::new(
-        configuration.email_client.base_url,
-        SubscriberEmail::parse(configuration.email_client.sender_email)
-            .expect("Valid email for sender"),
-        configuration.email_client.authorization_token,
-        std::time::Duration::from_millis(configuration.email_client.timeout_millis),
-    );
-
-    let server = zero2prod::startup::run(listener, pool.clone(), email_client)
-        .expect("Failed to start server");
-    let _ = tokio::spawn(server);
-    let address = format!("http://127.0.0.1:{}", port);
-
-    TestApp { address, pool }
-}
-
-async fn setup_database(database_settings: DatabaseSettings) -> db::DatabaseSettings {
     Lazy::force(&TRACING);
 
-    let database_name = uuid::Uuid::new_v4().to_string();
+    // Ensure that we get a new database every time we run the tests to ensure isolation
+    let configuration = {
+        let mut config = zero2prod::configuration::get_configuration();
+        config.application.port = 0;
+        config
+    };
 
-    let database_settings: db::DatabaseSettings = database_settings.into();
-    let mut connection = db::get_pg_connection(&database_settings).await;
+    let configuration = setup_test_database(configuration).await;
+
+    let pg_pool = factory::get_pool_with(&configuration.database).await;
+
+    let build = NewsletterApp::build(configuration)
+        .await
+        .expect("Failed to build app");
+
+    let port = build.port();
+
+    let run = build.run().expect("Error running app");
+
+    let _ = tokio::spawn(run);
+
+    TestApp {
+        address: format!("http://{}:{}", "127.0.0.1", port),
+        pool: pg_pool,
+    }
+}
+
+async fn setup_test_database(settings: Settings) -> Settings {
+    let database_settings = {
+        let mut database_settings = settings.database;
+        database_settings.database_name = "".to_string();
+        database_settings
+    };
+
+    let mut connection = factory::get_connection_with(&database_settings).await;
+
+    let database_name = uuid::Uuid::new_v4().to_string();
 
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, database_name).as_str())
         .await
         .expect("Failed to create database.");
 
-    let database_settings = db::DatabaseSettings {
-        database_name,
-        ..database_settings
+    let database_settings = {
+        let mut database_settings = database_settings;
+        database_settings.database_name = database_name;
+        database_settings
     };
 
-    let mut connection = db::get_pg_connection(&database_settings).await;
+    let mut connection = factory::get_connection_with(&database_settings).await;
 
     sqlx::migrate!("./migrations")
         .run(&mut connection)
         .await
         .expect("Failed to run migrations.");
 
-    database_settings
+    Settings {
+        database: database_settings,
+        ..settings
+    }
+}
+
+impl TestApp {
+    pub async fn post_subscriptions(&self, body: &str) -> Result<Response, reqwest::Error> {
+        let response = post(&self.address, "subscriptions")
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body.to_string())
+            .send()
+            .await?;
+        Ok(response)
+    }
 }

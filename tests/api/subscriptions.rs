@@ -1,4 +1,4 @@
-use crate::helpers::{post, spawn_app};
+use crate::helpers::spawn_app;
 
 #[tokio::test]
 async fn subscribe_returns_a_200_for_valid_data() {
@@ -6,13 +6,7 @@ async fn subscribe_returns_a_200_for_valid_data() {
     let test_app = spawn_app().await;
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
-    let send = post(&test_app.address, "subscriptions")
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
+    let send = test_app.post_subscriptions(body).await.unwrap();
     assert_eq!(200, send.status().as_u16());
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
@@ -26,7 +20,7 @@ async fn subscribe_returns_a_200_for_valid_data() {
 
 #[tokio::test]
 async fn subscribe_returns_400_when_data_is_missing() {
-    let test_app = spawn_app().await.address;
+    let test_app = spawn_app().await;
 
     let test_cases = vec![
         ("name=le%20guin", "missing the email"),
@@ -38,10 +32,8 @@ async fn subscribe_returns_400_when_data_is_missing() {
     ];
 
     for (invalid_body, error_message) in test_cases {
-        let response = post(&test_app, "subscriptions")
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(invalid_body)
-            .send()
+        let response = test_app
+            .post_subscriptions(invalid_body)
             .await
             .expect("Failed to execute request.");
 
