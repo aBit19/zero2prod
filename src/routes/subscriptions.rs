@@ -26,7 +26,7 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
 
-    if add_new_subscriber(&pool, &subscriber).await.is_err() {
+    if insert_subscription(&pool, &subscriber).await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
@@ -40,27 +40,10 @@ pub async fn subscribe(
     HttpResponse::Ok().finish()
 }
 
-async fn add_new_subscriber(pool: &PgPool, subscriber: &NewSubscriber) -> Result<(), sqlx::Error> {
-    sqlx::query!(
-        r#"
-        INSERT INTO subscriptions (id, name, email, subscribed_at, status)
-        VALUES ($1, $2, $3, $4, 'pending_verification')
-        "#,
-        uuid::Uuid::new_v4(),
-        subscriber.name.as_ref(),
-        subscriber.email.as_ref(),
-        chrono::Utc::now()
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query {:?}.", e);
-        e
-    })?;
-
-    Ok(())
-}
-
+#[tracing::instrument(
+    name = "Sending welcome email to new subscriber.",
+    skip(email_client, subscriber, base_url)
+)]
 async fn send_welcome_email(
     email_client: &EmailClient,
     subscriber: &NewSubscriber,
