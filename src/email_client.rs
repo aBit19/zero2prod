@@ -84,7 +84,7 @@ mod tests {
 
     impl wiremock::Match for EmailBodyMatcher {
         fn matches(&self, request: &wiremock::Request) -> bool {
-            if let Ok(payload) = serde_json::from_slice(&request.body.as_slice()) {
+            if let Ok(payload) = serde_json::from_slice(request.body.as_slice()) {
                 let payload: serde_json::Value = dbg!(payload);
                 payload.get("From").is_some()
                     && payload.get("To").is_some()

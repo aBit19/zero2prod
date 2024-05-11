@@ -13,11 +13,11 @@ pub static TRACING: Lazy<()> = Lazy::new(|| {
 });
 
 pub fn post(address: &str, path: &str) -> reqwest::RequestBuilder {
-    client().post(&format!("{}/{}", address, path))
+    client().post(format!("{}/{}", address, path))
 }
 
 pub fn get(address: &str, path: &str) -> reqwest::RequestBuilder {
-    client().get(&format!("{}/{}", address, path))
+    client().get(format!("{}/{}", address, path))
 }
 
 pub fn client() -> reqwest::Client {
@@ -46,7 +46,18 @@ pub async fn spawn_app() -> TestApp {
 
     let pg_pool = factory::get_pool_with(&configuration.database).await;
 
-    let build = NewsletterApp::build(configuration)
+    let listener = NewsletterApp::bind(&configuration).unwrap();
+    let configuration = {
+        let mut config = configuration;
+        config.application.base_url = format!(
+            "http://{}:{}",
+            "127.0.0.1",
+            listener.local_addr().unwrap().port()
+        );
+        config
+    };
+
+    let build = NewsletterApp::build_with(configuration, listener)
         .await
         .expect("Failed to build app");
 
