@@ -1,5 +1,6 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, ResponseError};
 use rand::{thread_rng, Rng};
+use reqwest::StatusCode;
 use sqlx::{Executor, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -46,40 +47,16 @@ pub async fn subscribe(
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     base_url: web::Data<ApplicationBaseUrl>,
-) -> HttpResponse {
-    let mut transaction = match pool.begin().await {
-        Ok(transaction) => transaction,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
+) -> Result<HttpResponse, SubscribeError> {
+    let mut transaction = pool.begin().await?;
+    let subscriber: NewSubscriber = form.0.try_into()?;
+    let subscriber_id = insert_subscription(&mut transaction, &subscriber).await?;
+    let subscription_token = insert_subscription_token(&mut transaction, &subscriber_id).await?;
+    transaction.commit().await?;
 
-    let subscriber: NewSubscriber = match form.0.try_into() {
-        Ok(subscriber) => subscriber,
-        Err(_) => return HttpResponse::BadRequest().finish(),
-    };
+    send_welcome_email(&email_client, &subscriber, &base_url, &subscription_token).await?;
 
-    let subscriber_id = match insert_subscription(&mut transaction, &subscriber).await {
-        Ok(subscriber_id) => subscriber_id,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
-
-    let subscription_token = match insert_subscription_token(&mut transaction, &subscriber_id).await
-    {
-        Ok(token) => token,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
-
-    if transaction.commit().await.is_err() {
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    if send_welcome_email(&email_client, &subscriber, &base_url, &subscription_token)
-        .await
-        .is_err()
-    {
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    HttpResponse::Ok().finish()
+    Ok(HttpResponse::Ok().finish())
 }
 
 async fn insert_subscription_token(
@@ -113,7 +90,7 @@ async fn send_welcome_email(
     subscriber: &NewSubscriber,
     base_url: &ApplicationBaseUrl,
     subscription_token: &SubscriptionToken,
-) -> Result<(), ()> {
+) -> Result<(), reqwest::Error> {
     let email_body = format!(
         "Welcome to our newsletter <a href=\"{}/subscriptions/confirm?token={}\">here</a>",
         base_url.0, subscription_token.0
@@ -121,8 +98,7 @@ async fn send_welcome_email(
 
     email_client
         .send_email(&subscriber.email, "Welcome", &email_body, &email_body)
-        .await
-        .map_err(|_| ())?;
+        .await?;
 
     Ok(())
 }
@@ -161,5 +137,30 @@ impl TryFrom<FormData> for NewSubscriber {
         let name = SubscriberName::parse(value.name)?;
         let email = SubscriberEmail::parse(value.email)?;
         Ok(NewSubscriber { name, email })
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SubscribeError {
+    #[error("Failed to query.")]
+    DatabaseError(#[from] sqlx::Error),
+    #[error("{0}")]
+    ValidationError(String),
+    #[error("Error when sending a confirmation email")]
+    ConfirmationError(#[from] reqwest::Error),
+}
+
+impl From<String> for SubscribeError {
+    fn from(value: String) -> Self {
+        SubscribeError::ValidationError(value)
+    }
+}
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> reqwest::StatusCode {
+        match self {
+            Self::ValidationError(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     }
 }
