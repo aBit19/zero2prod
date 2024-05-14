@@ -28,6 +28,7 @@ tracing-actix-web = "0.7.10"
 serde-aux = "4.5.0"
 unicode-segmentation = "1.11.0"
 validator = "0.18.1"
+rand = { version = "0.8.5", features = ["std_rng"] }
 
 [dependencies.sqlx]
 version = "0.7"

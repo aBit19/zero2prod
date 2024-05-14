@@ -109,3 +109,26 @@ async fn subscribe_sends_a_confirmation_with_link() {
 
     assert_eq!(html_link, text_link);
 }
+
+#[tokio::test]
+async fn subscribe_inserts_a_subscription_token_to_db() {
+    // Arrange
+    let test_app = spawn_app().await;
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&test_app.email_server)
+        .await;
+
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    test_app.post_subscriptions(body).await.unwrap();
+
+    let token = sqlx::query!("SELECT token FROM subscription_tokens",)
+        .fetch_all(&test_app.pool.clone())
+        .await
+        .expect("Failed to fetch token from db.");
+
+    assert_eq!(1, token.len());
+}
