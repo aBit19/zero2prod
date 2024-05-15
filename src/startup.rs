@@ -1,7 +1,9 @@
 use crate::configuration::Settings;
 use crate::email_client::EmailClient;
 use crate::factory;
-use crate::routes::{confirm_subscription, health_check, subscribe, ApplicationBaseUrl};
+use crate::routes::{
+    confirm_subscription, health_check, publish_newsletter, subscribe, ApplicationBaseUrl,
+};
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use sqlx::PgPool;
@@ -62,6 +64,7 @@ impl NewsletterApp {
                     "/subscriptions/confirm",
                     web::post().to(confirm_subscription),
                 )
+                .route("/newsletter", web::post().to(publish_newsletter))
                 .app_data(pool.clone())
                 .app_data(email_client.clone())
                 .app_data(application_url.clone())
